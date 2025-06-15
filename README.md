@@ -1,6 +1,6 @@
 ## ✅ Compatibility
 **Tested on:** HP Victus 15 (by me) 
--Lnux Mint 22.1 x86_64 
+  -Linux Mint 22.1 x86_64 
 
 
 
