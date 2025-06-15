@@ -1,5 +1,7 @@
 ## ✅ Compatibility
-**Tested on:** HP Victus 15 (by me) 
+**Tested on:** HP Victus 15 (by me) L
+inux Mint 22.1 x86_64 
+
 
 
 # Fan Controller GUI for Linux (NBFC-based) for all laptops
