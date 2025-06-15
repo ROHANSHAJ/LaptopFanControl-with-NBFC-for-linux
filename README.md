@@ -1,5 +1,8 @@
+## ✅ Compatibility
+**Tested on:** HP Victus 15 (by me)
 
-# Fan Controller GUI for Linux (NBFC-based)
+
+# Fan Controller GUI for Linux (NBFC-based) for laptops
 
 A Python GUI application to control your laptop fans on Linux using [NBFC (NoteBook FanControl)](https://github.com/hirschmann/nbfc) backend.  
 The app supports manual fan speed modes as well as an automatic mode based on CPU temperature, and displays system stats like CPU/GPU temperature, usage, and RAM usage.
