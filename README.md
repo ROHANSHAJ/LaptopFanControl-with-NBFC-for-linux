@@ -72,7 +72,7 @@ The app supports manual fan speed modes as well as an automatic mode based on CP
 - NBFC configurations must match your laptop model for fan control to work properly.
 - Tested on HP Victus 15 with AMD APU and Nvidia GPU under Linux.
 
-- only run Victus_fans.py after runnuing all_fans,py
+## Only run Victus_fans.py after runnuing all_fans,py
 
 ---
 
