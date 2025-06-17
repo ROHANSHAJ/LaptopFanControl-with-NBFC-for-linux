@@ -1,107 +1,189 @@
+
+# 🌀 NBFC Fan Controller GUI for Linux
+
+A Python-based GUI app to control your laptop’s fans using [NBFC (NoteBook FanControl)](https://github.com/hirschmann/nbfc) on Linux.  
+Includes **manual fan control**, **auto mode based on CPU temperature**, **system monitoring**, and **tray icon support**.
+
+---
+
 ## ✅ Compatibility
-**Tested on:** HP Victus 15 (by me) 
-  -Linux Mint 22.1 x86_64 
 
-
-
-# Fan Controller GUI for Linux (NBFC-based) for all laptops
-
-A Python GUI application to control your laptop fans on Linux using [NBFC (NoteBook FanControl)](https://github.com/hirschmann/nbfc) backend.  
-The app supports manual fan speed modes as well as an automatic mode based on CPU temperature, and displays system stats like CPU/GPU temperature, usage, and RAM usage.
+**Tested On:**
+- **Laptop:** HP Victus 15 (by author)
+- **OS:** Linux Mint 22.1 x86_64
 
 ---
 
-## Features
+## 🚀 Features
 
-- Manual fan speed control modes: **Silent, Balanced, Performance, Turbo**
-- Automatic fan speed adjustment based on CPU temperature
-- Display real-time system stats:
+- 🧊 **Fan Control Modes**:
+  - Silent (25%)
+  - Balanced (50%)
+  - Performance (75%)
+  - Turbo (100%)
+  - Auto (dynamic based on CPU temp)
+
+- 📈 **System Monitoring**:
   - CPU temperature and usage
-  - GPU info (NVIDIA and AMD supported)
+  - GPU temperature (NVIDIA/AMD)
   - RAM usage
-- Tray icon support with show/hide and exit options
-- Automatic setup and installation of NBFC and its dependencies (requires sudo)
-- User-friendly Tkinter GUI with modern dark theme
+
+- 🧲 **System Tray Support**:
+  - Minimize to tray (purple dot icon)
+  - Restore GUI or exit app via tray
+
+- ⚙️ **NBFC Auto Setup**:
+  - Installs and builds NBFC
+  - Prompts user to select profile
+
+- 💻 **User-Friendly GUI**:
+  - Dark-themed Tkinter interface
+  - Status bar with real-time info
 
 ---
 
-## Requirements
+## 🛠️ Setup Options
 
-- Python 3.x
-- Linux system with NBFC support (tested on Ubuntu/Debian)
-- Dependencies (install via pip and apt):
-  - `tkinter` (usually preinstalled with Python)
-  - `psutil` (`pip install psutil`)
-  - `pystray` (`pip install pystray`)
-  - `Pillow` (`pip install pillow`)
-  - `mono-complete`, `git`, `build-essential` (installed automatically if run with sudo)
+### 🔹 Option 1: Automatic Setup (Recommended)
 
----
-
-## Installation & Setup
-
-1. Clone or download this repository.
-
-2. Ensure Python 3 and required packages are installed:
-
-   ```bash
-   sudo apt update
-   sudo apt install python3 python3-pip git build-essential mono-complete
-   pip3 install psutil pystray pillow
-   ```
-
-3. Run the script (preferably with sudo for full fan control functionality):
-
+1. **Run the app with sudo**:
    ```bash
    sudo python3 nbfc_fan_controller.py
    ```
 
-4. On first run, the app will attempt to install and build NBFC automatically and prompt you to select a suitable NBFC configuration for your laptop model.
+2. On first run:
+   - Installs NBFC if not found
+   - Builds and configures it
+   - Prompts to select compatible NBFC profile
+
+> ✅ This is the easiest and fastest way to get started.
 
 ---
 
-## Usage
+### 🔸 Option 2: Manual Setup
 
-- Select a fan mode to manually set fan speed or choose **Auto** to let the app adjust fan speeds based on CPU temperature.
-- System stats update every few seconds.
-- Close the window to minimize the app to the system tray. Use the tray icon menu to show the window or exit.
+#### 1. Install System Dependencies:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip git build-essential mono-complete lm-sensors
+```
+
+#### 2. Install Python Dependencies:
+
+```bash
+pip3 install psutil pystray pillow
+```
+
+#### 3. Clone and Build NBFC:
+
+```bash
+git clone https://github.com/nbfc-linux/nbfc-linux.git /tmp/nbfc-linux
+cd /tmp/nbfc-linux
+make
+sudo make install
+```
+
+> *(Optional)* Install config probe tool:  
+> `sudo apt install nbfc-linux-probe`
+
+#### 4. Configure NBFC:
+
+```bash
+nbfc config -l                     # List available configs
+sudo nbfc config -s "Your Laptop" # Replace with your model
+sudo systemctl restart nbfc_service
+sudo nbfc start
+```
+
+#### 5. Run the App:
+
+```bash
+sudo python3 nbfc_fan_controller.py
+```
+
+> Run `Victus_fans.py` only **after** `all_fans.py` if you use both scripts.
 
 ---
 
-## Notes
+## 📖 Usage Guide
 
-- Running without sudo will show a warning and may limit fan control capabilities.
-- NBFC configurations must match your laptop model for fan control to work properly.
-- Tested on HP Victus 15 with AMD APU and Nvidia GPU under Linux.
+- **Fan Control**: Select a fan mode or use **Auto** (dynamic adjustment).
+- **Minimize**: Close window to tray.
+- **Tray Menu**: Right-click tray icon to restore or exit.
 
-## Only run Victus_fans.py after runnuing all_fans,py
+#### 🔄 Auto Fan Logic:
 
----
-
-## Troubleshooting
-
-- If fan speeds do not change, check that NBFC service is running and your config is applied.
-- Run the app with sudo to ensure permissions.
-- Verify NBFC installation manually via terminal commands:
-  ```bash
-  nbfc --version
-  nbfc config -l
-  ```
+| CPU Temp      | Mode        |
+|---------------|-------------|
+| < 45°C        | Silent      |
+| 45–59°C       | Balanced    |
+| 60–74°C       | Performance |
+| ≥ 75°C        | Turbo       |
 
 ---
 
-## License
+## 🧪 Troubleshooting
 
-This project is open source under the MIT License.
+- **Fan not responding**:
+  - Check NBFC status: `journalctl -u nbfc_service`
+  - Ensure proper config selected: `nbfc config -l`
+
+- **No temperature shown**:
+  - Run: `sensors`
+  - Verify `coretemp` or `amdgpu` is in `/sys/class/hwmon/`
+
+- **No sudo**: App runs in monitoring-only mode without root.
 
 ---
 
-## Acknowledgments
+## 🔁 Run on Startup (Optional)
 
-- [NBFC-Linux](https://github.com/nbfc-linux/nbfc-linux) for fan control backend
-- `psutil`, `pystray`, `Pillow` libraries for system monitoring and tray icon functionality
-- Tkinter for GUI framework
+1. Create systemd service:
+
+```bash
+mkdir -p ~/.config/systemd/user
+nano ~/.config/systemd/user/nbfc-fan-controller.service
+```
+
+2. Paste:
+
+```ini
+[Unit]
+Description=NBFC Fan Controller GUI
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/sudo /usr/bin/python3 /path/to/nbfc_fan_controller.py
+Restart=always
+
+[Install]
+WantedBy=graphical-session.target
+```
+
+3. Enable the service:
+
+```bash
+systemctl --user enable nbfc-fan-controller.service
+systemctl --user start nbfc-fan-controller.service
+```
 
 ---
 
-Feel free to open issues or contribute!
+## 🧾 License
+
+MIT License – use freely, attribution appreciated.
+
+---
+
+## 🙌 Acknowledgments
+
+- [NBFC-Linux](https://github.com/nbfc-linux/nbfc-linux)
+- [`psutil`](https://pypi.org/project/psutil/)
+- [`pystray`](https://pypi.org/project/pystray/)
+- [`Pillow`](https://pypi.org/project/Pillow/)
+- Linux open-source community
+
+---
+
+📬 *Found bugs? Have ideas? Open an issue or contribute!*
