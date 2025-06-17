@@ -1,12 +1,14 @@
+#rohanshaj _K R
 import tkinter as tk
 import subprocess
 import threading
 import time
 import os
 import psutil
-import pystray
-from PIL import Image, ImageDraw
+import json
+import sys
 
+# Fan mode mapping
 fan_modes = {
     "Silent": 25,
     "Balanced": 50,
@@ -15,211 +17,210 @@ fan_modes = {
     "Auto": -1
 }
 
-root = tk.Tk()
-root.title("HP Victus Fan Controller")
-root.geometry("350x550")
-root.configure(bg="#1e1e2e")
+state_file = "/home/rohan/fan_state.txt"
+current_mode = "Silent"
+auto_mode_enabled = False
+nbfc_popup = None
 
-current_mode = tk.StringVar()
-current_mode.set("Silent")
+# ------------------ NBFC Fan Control ------------------
+def set_fan_speed(speed):
+    for fan in [0, 1]:
+        try:
+            result = subprocess.run(
+                ["sudo", "/usr/bin/nbfc", "set", "--fan", str(fan), "--speed", str(speed)],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            print(f"[Info] Set fan {fan} to {speed}%: {result.stdout.strip()}")
+        except subprocess.CalledProcessError as e:
+            error = e.stderr.strip() if e.stderr else "Unknown error"
+            print(f"[Error] NBFC fan {fan} (speed {speed}%): {error}")
+        except Exception as e:
+            print(f"[Error] NBFC fan {fan}: {e}")
 
+def get_nbfc_status():
+    try:
+        result = subprocess.run(["sudo", "/usr/bin/nbfc", "status"], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError as e:
+        return f"[NBFC Error] {e.stderr.strip() if e.stderr else 'Unknown error'}"
+    except Exception as e:
+        return f"[NBFC Error] {e}"
+
+# ------------------ Persistence ------------------
+def save_fan_state(mode):
+    try:
+        with open(state_file, "w") as f:
+            json.dump({"mode": mode}, f)
+        os.chmod(state_file, 0o644)
+    except Exception as e:
+        print(f"[Error] Saving fan state: {e}")
+
+def load_fan_state():
+    try:
+        if os.path.exists(state_file):
+            with open(state_file, "r") as f:
+                data = json.load(f)
+                mode = data.get("mode", "Silent")
+                if mode in fan_modes:
+                    return mode
+    except Exception as e:
+        print(f"[Error] Loading fan state: {e}")
+    return "Silent"
+
+# ------------------ Auto Mode ------------------
+def apply_mode(mode):
+    global current_mode, auto_mode_enabled
+    current_mode = mode
+    save_fan_state(mode)
+    if mode == "Auto":
+        auto_mode_enabled = True
+    else:
+        auto_mode_enabled = False
+        set_fan_speed(fan_modes[mode])
+    update_mode_label()
+
+def auto_mode_loop():
+    while True:
+        if auto_mode_enabled:
+            temp = get_cpu_temp()
+            if temp is None:
+                temp = 0
+            if temp < 45:
+                set_fan_speed(fan_modes["Silent"])
+            elif temp < 60:
+                set_fan_speed(fan_modes["Balanced"])
+            elif temp < 75:
+                set_fan_speed(fan_modes["Performance"])
+            else:
+                set_fan_speed(fan_modes["Turbo"])
+        time.sleep(5)
+
+# ------------------ System Info ------------------
 def get_cpu_temp():
-    try:
-        with open("/sys/class/hwmon/hwmon4/temp1_input") as f:
-            return int(f.read()) / 1000
-    except:
-        return None
-
-def get_cpu_usage():
-    return psutil.cpu_percent(interval=0.5)
-
-def get_ram_usage():
-    mem = psutil.virtual_memory()
-    return mem.used / (1024 ** 3), mem.total / (1024 ** 3)
-
-def get_gpu_info():
-    info = {}
-
-    try:
-        output = subprocess.check_output([
-            "nvidia-smi", "--query-gpu=name,utilization.gpu,temperature.gpu,memory.used,memory.total",
-            "--format=csv,noheader,nounits"
-        ]).decode().strip()
-        name, usage, temp, mem_used, mem_total = output.split(", ")
-        info["nvidia"] = {
-            "name": name,
-            "usage": int(usage),
-            "temp": int(temp),
-            "mem_used": int(mem_used),
-            "mem_total": int(mem_total)
-        }
-    except:
-        info["nvidia"] = None
-
     try:
         for hwmon in os.listdir("/sys/class/hwmon/"):
             name_path = f"/sys/class/hwmon/{hwmon}/name"
             if os.path.exists(name_path):
                 with open(name_path) as f:
-                    name = f.read().strip()
-                    if "amdgpu" in name:
-                        temp_path = f"/sys/class/hwmon/{hwmon}/temp1_input"
-                        if os.path.exists(temp_path):
-                            with open(temp_path) as tf:
-                                temp = int(tf.read()) / 1000
-                                info["amd"] = {
-                                    "name": "AMD iGPU",
-                                    "temp": round(temp, 1),
-                                    "usage": None
-                                }
-                                break
-    except:
-        info["amd"] = None
+                    if "k10temp" in f.read().strip():
+                        with open(f"/sys/class/hwmon/{hwmon}/temp1_input") as tf:
+                            return int(tf.read()) / 1000
+    except Exception as e:
+        print(f"[Error] Getting CPU temp: {e}")
+    return None
 
-    return info
-
-def set_fan_speed(speed):
+def get_nvidia_gpu_temp():
     try:
-        subprocess.run(["sudo", "nbfc", "set", "--fan", "0", "--speed", str(speed)], check=True)
-        subprocess.run(["sudo", "nbfc", "set", "--fan", "1", "--speed", str(speed)], check=True)
-        subprocess.run(["sudo", "nbfc", "restart"], check=True)
-        status_label.config(text=f"Manual Mode: Set fan speed to {speed}%")
-    except subprocess.CalledProcessError:
-        status_label.config(text="Failed to set fan speed")
+        output = subprocess.check_output(["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"], text=True)
+        return int(output.strip().split('\n')[0])
+    except Exception as e:
+        print(f"[Error] Getting NVIDIA GPU temp: {e}")
+        return None
 
-def apply_mode(mode_name):
-    global auto_mode_enabled
-    current_mode.set(mode_name)
-    if mode_name == "Auto":
-        auto_mode_enabled = True
-        status_label.config(text="Auto Mode Enabled")
-    else:
-        auto_mode_enabled = False
-        speed = fan_modes[mode_name]
-        set_fan_speed(speed)
-
-def auto_mode_loop():
-    while True:
-        if current_mode.get() == "Auto":
-            temp = get_cpu_temp()
-            if temp is not None:
-                if temp < 45:
-                    set_fan_speed(fan_modes["Silent"])
-                elif temp < 60:
-                    set_fan_speed(fan_modes["Balanced"])
-                elif temp < 75:
-                    set_fan_speed(fan_modes["Performance"])
-                else:
-                    set_fan_speed(fan_modes["Turbo"])
-                status_label.config(text=f"Auto Mode: CPU Temp {temp:.1f}°C")
-        time.sleep(10)
-
-def update_stats():
-    while True:
-        cpu_temp = get_cpu_temp()
-        cpu_usage = get_cpu_usage()
-        gpu_info = get_gpu_info()
-        ram_used, ram_total = get_ram_usage()
-
-        cpu_temp_label.config(text=f"CPU Temp: {cpu_temp:.1f}°C" if cpu_temp else "CPU Temp: N/A")
-        cpu_usage_label.config(text=f"CPU Usage: {cpu_usage:.1f}%")
-        ram_label.config(text=f"RAM: {ram_used:.1f} / {ram_total:.1f} GB")
-
-        if gpu_info.get("nvidia"):
-            n = gpu_info["nvidia"]
-            gpu_n_label.config(text=f"NVIDIA {n['name']}: {n['usage']}% @ {n['temp']}°C ({n['mem_used']}/{n['mem_total']}MB)")
-        else:
-            gpu_n_label.config(text="NVIDIA: N/A")
-
-        if gpu_info.get("amd"):
-            a = gpu_info["amd"]
-            gpu_a_label.config(text=f"{a['name']}: {a['temp']}°C")
-        else:
-            gpu_a_label.config(text="AMD: N/A")
-
-        time.sleep(5)
-
-def start_nbfc():
-    subprocess.run(["sudo", "nbfc", "start"])
-
-# Create a simple tray icon image (purple circle)
-def create_image():
-    image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(image)
-    draw.ellipse((8, 8, 56, 56), fill="#bd93f9")
-    return image
-
-# Show the window again from tray
-def show_window(icon, item):
-    icon.stop()
-    root.after(0, root.deiconify)
-
-# Exit the program cleanly
-def exit_app(icon, item):
-    icon.stop()
-    root.after(0, root.destroy)
-
-# Hide the window and show tray icon
-def on_closing():
-    root.withdraw()
-    image = create_image()
-    menu = pystray.Menu(
-        pystray.MenuItem('Show', show_window),
-        pystray.MenuItem('Exit', exit_app)
-    )
-    icon = pystray.Icon("HP Victus Fan Controller", image, "Fan Controller", menu)
-    threading.Thread(target=icon.run, daemon=True).start()
-    status_label.config(text="Window hidden. Tray icon running.")
-
-root.protocol("WM_DELETE_WINDOW", on_closing)
+def get_stats():
+    try:
+        cpu = psutil.cpu_percent(interval=0.1)
+        ram = psutil.virtual_memory()
+        temp = get_cpu_temp()
+        gpu_temp = get_nvidia_gpu_temp()
+        return cpu, ram.percent, temp, gpu_temp
+    except Exception as e:
+        print(f"[Error] Getting stats: {e}")
+        return 0, 0, None, None
 
 # ------------------ UI ------------------
+def update_mode_label():
+    mode_label.config(text=f"Mode: {current_mode}")
 
-tk.Label(root, text="Fan Modes", font=("Helvetica", 16), bg="#1e1e2e", fg="#f8f8f2").pack(pady=10)
+def update_stats_label():
+    cpu, ram, temp, gpu_temp = get_stats()
+    temp_val = temp if temp is not None else 0
+    gpu_val = f"{gpu_temp}°C" if gpu_temp is not None else "N/A"
 
-mode_frame = tk.Frame(root, bg="#1e1e2e")
-mode_frame.pack()
+    stats_text = f"CPU: {cpu:.1f}%\nRAM: {ram:.1f}%\nCPU Temp: {temp_val:.1f}°C\nNVIDIA GPU: {gpu_val}"
+    stats_label.config(text=stats_text)
+
+    if temp_val < 50:
+        stats_label.config(fg="green")
+    elif temp_val < 70:
+        stats_label.config(fg="orange")
+    else:
+        stats_label.config(fg="red")
+
+    root.after(3000, update_stats_label)
+
+def on_mode_button(mode):
+    apply_mode(mode)
+
+def show_nbfc_popup():
+    global nbfc_popup
+    if nbfc_popup and tk.Toplevel.winfo_exists(nbfc_popup):
+        nbfc_popup.lift()
+        return
+
+    nbfc_popup = tk.Toplevel(root)
+    nbfc_popup.title("NBFC Status - Live")
+    nbfc_popup.geometry("500x400")
+    nbfc_popup.configure(bg="#1e1e1e")
+
+    text_box = tk.Text(nbfc_popup, wrap="word", font=("Courier", 10), bg="#1e1e1e", fg="#cccccc")
+    text_box.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def update_nbfc_output():
+        if not tk.Toplevel.winfo_exists(nbfc_popup):
+            return
+        output = get_nbfc_status()
+        text_box.config(state="normal")
+        text_box.delete("1.0", tk.END)
+        text_box.insert("1.0", output)
+        text_box.config(state="disabled")
+        nbfc_popup.after(3000, update_nbfc_output)
+
+    update_nbfc_output()
+
+# ------------------ Build GUI ------------------
+root = tk.Tk()
+root.title("Victus Fan Controller")
+root.geometry("340x450")
+root.resizable(False, False)
+root.configure(bg="#1e1e1e")
+
+tk.Label(root, text="HP Victus Fan Control", font=("Helvetica", 16, "bold"), bg="#1e1e1e", fg="#00d4ff").pack(pady=10)
+
+mode_label = tk.Label(root, text="Mode: Loading...", font=("Helvetica", 12), bg="#1e1e1e", fg="#ffffff")
+mode_label.pack(pady=5)
+
+stats_label = tk.Label(root, text="Stats Loading...", font=("Courier", 11), bg="#1e1e1e")
+stats_label.pack(pady=5)
+
+button_frame = tk.Frame(root, bg="#1e1e1e")
+button_frame.pack(pady=10)
+
+btn_style = {
+    "font": ("Arial", 10),
+    "width": 20,
+    "bg": "#333333",
+    "fg": "#ffffff",
+    "activebackground": "#555555",
+    "relief": "ridge",
+    "bd": 2,
+    "highlightthickness": 0
+}
 
 for mode in fan_modes:
-    tk.Radiobutton(
-        mode_frame,
-        text=mode,
-        variable=current_mode,
-        value=mode,
-        indicatoron=False,
-        width=20,
-        height=2,
-        command=lambda m=mode: apply_mode(m),
-        bg="#44475a",
-        fg="#f8f8f2",
-        activebackground="#6272a4",
-        selectcolor="#bd93f9"
-    ).pack(pady=4)
+    tk.Button(button_frame, text=mode, command=lambda m=mode: on_mode_button(m), **btn_style).pack(pady=3)
 
-tk.Label(root, text="System Stats", font=("Helvetica", 14), bg="#1e1e2e", fg="#ffb86c").pack(pady=10)
+tk.Button(root, text="NBFC Info", command=show_nbfc_popup, bg="#00d4ff", fg="#000000", font=("Arial", 10, "bold")).pack(pady=5)
+tk.Button(root, text="Quit", command=root.destroy, bg="#ff4444", fg="white", font=("Arial", 10, "bold")).pack(pady=10)
 
-cpu_temp_label = tk.Label(root, text="CPU Temp: ...", bg="#1e1e2e", fg="#50fa7b", font=("Helvetica", 12))
-cpu_temp_label.pack()
-
-cpu_usage_label = tk.Label(root, text="CPU Usage: ...", bg="#1e1e2e", fg="#8be9fd", font=("Helvetica", 12))
-cpu_usage_label.pack()
-
-gpu_n_label = tk.Label(root, text="NVIDIA: ...", bg="#1e1e2e", fg="#8be9fd", font=("Helvetica", 12))
-gpu_n_label.pack()
-
-gpu_a_label = tk.Label(root, text="AMD: ...", bg="#1e1e2e", fg="#ffb86c", font=("Helvetica", 12))
-gpu_a_label.pack()
-
-ram_label = tk.Label(root, text="RAM: ...", bg="#1e1e2e", fg="#f1fa8c", font=("Helvetica", 12))
-ram_label.pack()
-
-status_label = tk.Label(root, text="NBFC Service Starting...", bg="#1e1e2e", fg="#f8f8f2", font=("Helvetica", 10))
-status_label.pack(pady=10)
-
-auto_mode_enabled = False
-
-start_nbfc()
-threading.Thread(target=update_stats, daemon=True).start()
-threading.Thread(target=auto_mode_loop, daemon=True).start()
-
-root.mainloop()
+# ------------------ Start ------------------
+try:
+    apply_mode(load_fan_state())
+    threading.Thread(target=auto_mode_loop, daemon=True).start()
+    update_stats_label()
+    root.mainloop()
+except Exception as e:
+    print(f"[Error] Application failed: {e}")
+    sys.exit(1)
