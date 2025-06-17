@@ -10,6 +10,7 @@ Includes **manual fan control**, **auto mode based on CPU temperature**, **syste
 
 **Tested On:**
 - **Laptop:** HP Victus 15 (by author)
+- - Will work on other laptops too (by author)
 - **OS:** Linux Mint 22.1 x86_64
 
 ---
