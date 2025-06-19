@@ -100,7 +100,7 @@ sudo nbfc start
 #### 5. Run the App:
 
 ```bash
-sudo python3 nbfc_fan_controller.py
+sudo python3 all_fan.py
 ```
 
 > Run `Victus_fans.py` only **after** `all_fans.py` if you use both scripts.
